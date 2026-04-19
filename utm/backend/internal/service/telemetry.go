@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 	"github.com/utm/backend/internal/model"
 	"github.com/utm/backend/internal/mq"
@@ -18,16 +17,13 @@ import (
 
 const mqttTopicControl = "utm/control/commands"
 
-// ControlConfig lưu cấu hình điều khiển nhận từ FE.
 type ControlConfig struct {
 	mu          sync.RWMutex
 	sensitivity float64
 	muteUntil   time.Time
 }
 
-func newControlConfig() *ControlConfig {
-	return &ControlConfig{sensitivity: 1.0}
-}
+func newControlConfig() *ControlConfig { return &ControlConfig{sensitivity: 1.0} }
 
 func (c *ControlConfig) isMuted() bool {
 	c.mu.RLock()
@@ -42,35 +38,36 @@ func (c *ControlConfig) getSensitivity() float64 {
 }
 
 type TelemetryService struct {
-	repo       *mongoRepo.TelemetryRepository
-	authzRepo  *pgRepo.AuthorizationRepository
-	cmdLogRepo *mongoRepo.CommandLogRepository
-	mqtt       *mq.MQTTPublisher
-	hub        *ws.Hub
-	config     *ControlConfig
+	repo        *mongoRepo.TelemetryRepository
+	authzRepo   *pgRepo.AuthorizationRepository
+	cmdLogRepo  *mongoRepo.CommandLogRepository
+	mqtt        *mq.MQTTClient
+	alertClient *ws.AlertClient // WS client kết nối đến utm-alert
+	config      *ControlConfig
 }
 
 func NewTelemetryService(
 	repo *mongoRepo.TelemetryRepository,
 	authzRepo *pgRepo.AuthorizationRepository,
 	cmdLogRepo *mongoRepo.CommandLogRepository,
-	mqttPub *mq.MQTTPublisher,
+	mqttClient *mq.MQTTClient,
+	alertURL string, // ws://utm-alert:8081/ws/backend
 ) *TelemetryService {
 	svc := &TelemetryService{
 		repo:       repo,
 		authzRepo:  authzRepo,
 		cmdLogRepo: cmdLogRepo,
-		mqtt:       mqttPub,
+		mqtt:       mqttClient,
 		config:     newControlConfig(),
 	}
-	svc.hub = ws.NewHub(svc.handleCommand)
+	svc.alertClient = ws.NewAlertClient(alertURL, svc.handleRawCommand)
 	return svc
 }
 
-func (s *TelemetryService) Hub() *ws.Hub { return s.hub }
+// AlertClient trả về client để router gọi Run().
+func (s *TelemetryService) AlertClient() *ws.AlertClient { return s.alertClient }
 
 func (s *TelemetryService) Push(ctx context.Context, data *model.Telemetry) error {
-	s.broadcastTelemetry(data)
 	go s.checkAndBroadcastAlert(context.Background(), data)
 	go func() {
 		if err := s.repo.Insert(context.Background(), data); err != nil {
@@ -88,13 +85,18 @@ func (s *TelemetryService) GetActiveSessions(ctx context.Context) ([]*model.Flig
 	return s.repo.FindActiveSessions(ctx)
 }
 
-func (s *TelemetryService) StreamToClient(ctx context.Context, conn *websocket.Conn) {
-	s.hub.ServeClient(conn)
-}
+// handleRawCommand nhận raw JSON từ utm-alert (control command do FE gửi).
+func (s *TelemetryService) handleRawCommand(raw []byte) {
+	receivedAt := time.Now().UTC()
 
-// handleCommand xử lý lệnh từ FE: cập nhật config, publish MQTT, lưu log.
-func (s *TelemetryService) handleCommand(cmd ws.ControlCommand) {
-	receivedAt := time.Now().UTC() // ghi nhận thời điểm nhận ngay lập tức
+	var cmd struct {
+		Type   string          `json:"type"`
+		Action string          `json:"action"`
+		Params json.RawMessage `json:"params,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &cmd); err != nil || cmd.Type != "control" {
+		return
+	}
 
 	s.config.mu.Lock()
 	switch cmd.Action {
@@ -121,7 +123,7 @@ func (s *TelemetryService) handleCommand(cmd ws.ControlCommand) {
 		s.config.sensitivity = p.Value
 
 	case "acknowledge":
-		// không thay đổi config, chỉ publish + log
+		// không thay đổi config
 
 	default:
 		s.config.mu.Unlock()
@@ -130,34 +132,29 @@ func (s *TelemetryService) handleCommand(cmd ws.ControlCommand) {
 	}
 	s.config.mu.Unlock()
 
-	// Publish và log chạy async — không chặn readPump
-	go s.publishAndLog(cmd, receivedAt)
+	go s.publishAndLog(cmd.Action, cmd.Params, receivedAt)
 }
 
-// publishAndLog gửi lệnh lên MQTT broker và lưu log vào MongoDB.
-func (s *TelemetryService) publishAndLog(cmd ws.ControlCommand, receivedAt time.Time) {
+func (s *TelemetryService) publishAndLog(action string, params json.RawMessage, receivedAt time.Time) {
 	entry := &model.ControlCommandLog{
-		Action:     cmd.Action,
-		Params:     string(cmd.Params),
+		Action:     action,
+		Params:     string(params),
 		ReceivedAt: receivedAt,
 		MQTTTopic:  mqttTopicControl,
 	}
-
 	if s.mqtt != nil {
-		if err := s.mqtt.Publish(mqttTopicControl, cmd); err != nil {
-			log.Error().Err(err).Str("action", cmd.Action).Msg("mqtt publish failed")
+		payload := map[string]any{"type": "control", "action": action, "params": params}
+		if err := s.mqtt.Publish(mqttTopicControl, payload); err != nil {
+			log.Error().Err(err).Msg("mqtt publish control failed")
 		} else {
 			entry.PublishedAt = time.Now().UTC()
 			log.Info().
-				Str("action", cmd.Action).
-				Str("topic", mqttTopicControl).
+				Str("action", action).
 				Time("received_at", receivedAt).
-				Time("published_at", entry.PublishedAt).
 				Dur("publish_latency", entry.PublishedAt.Sub(receivedAt)).
-				Msg("control command published")
+				Msg("control command published to mqtt")
 		}
 	}
-
 	if err := s.cmdLogRepo.Insert(context.Background(), entry); err != nil {
 		log.Error().Err(err).Msg("save command log failed")
 	}
@@ -176,7 +173,7 @@ func (s *TelemetryService) checkAndBroadcastAlert(ctx context.Context, t *model.
 	}
 	authz, err := s.authzRepo.FindByID(ctx, id)
 	if err != nil {
-		log.Warn().Err(err).Str("auth_request_id", t.AuthRequestID).Msg("lookup auth request failed")
+		log.Warn().Err(err).Msg("lookup auth request failed")
 		return
 	}
 	if authz.FlightAreaJSON == "" {
@@ -187,23 +184,15 @@ func (s *TelemetryService) checkAndBroadcastAlert(ctx context.Context, t *model.
 	if alert == nil {
 		return
 	}
-	payload, err := json.Marshal(alert)
-	if err != nil {
-		log.Error().Err(err).Msg("marshal lane alert failed")
-		return
-	}
-	s.hub.Broadcast(payload)
+	s.sendToAlert(alert)
 }
 
-func (s *TelemetryService) broadcastTelemetry(data *model.Telemetry) {
-	type telemetryMsg struct {
-		Type    string           `json:"type"`
-		Payload *model.Telemetry `json:"payload"`
-	}
-	payload, err := json.Marshal(telemetryMsg{Type: "telemetry", Payload: data})
+// sendToAlert serialize và gửi lane alert đến utm-alert qua WS.
+func (s *TelemetryService) sendToAlert(alert *model.LaneAlert) {
+	data, err := json.Marshal(alert)
 	if err != nil {
-		log.Error().Err(err).Msg("marshal telemetry failed")
+		log.Error().Err(err).Msg("marshal alert message failed")
 		return
 	}
-	s.hub.Broadcast(payload)
+	s.alertClient.Send(data)
 }

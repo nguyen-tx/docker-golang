@@ -19,7 +19,6 @@ func NewRouter(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Database
 }
 
 func buildHandlers(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Database) *handlers {
-	// Repositories
 	userRepo := pgRepo.NewUserRepository(pgPool)
 	aircraftRepo := pgRepo.NewAircraftRepository(pgPool)
 	authzRepo := pgRepo.NewAuthorizationRepository(pgPool)
@@ -28,24 +27,25 @@ func buildHandlers(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Data
 	cmdLogRepo := mongoRepo.NewCommandLogRepository(mongoDB)
 	notifRepo := mongoRepo.NewNotificationRepository(mongoDB)
 
-	// MQTT publisher — optional, nil nếu chưa cấu hình
-	var mqttPub *mq.MQTTPublisher
+	var mqttClient *mq.MQTTClient
 	if cfg.MQTT.Broker != "" {
 		var err error
-		mqttPub, err = mq.NewMQTTPublisher(cfg.MQTT)
+		mqttClient, err = mq.NewMQTTClient(cfg.MQTT)
 		if err != nil {
-			log.Warn().Err(err).Msg("mqtt publisher init failed, running without mqtt")
+			log.Warn().Err(err).Msg("mqtt init failed, running without mqtt")
 		}
 	}
 
-	// Services
 	authSvc := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
 	userSvc := service.NewUserService(userRepo)
 	aircraftSvc := service.NewAircraftService(aircraftRepo)
 	authzSvc := service.NewAuthorizationService(authzRepo)
 	airspaceSvc := service.NewAirspaceService(airspaceRepo)
-	telemetrySvc := service.NewTelemetryService(telemetryRepo, authzRepo, cmdLogRepo, mqttPub)
-	go telemetrySvc.Hub().Run()
+	telemetrySvc := service.NewTelemetryService(
+		telemetryRepo, authzRepo, cmdLogRepo, mqttClient,
+		cfg.AlertService.URL, // ws://utm-alert:8081/ws/backend
+	)
+	go telemetrySvc.AlertClient().Run()
 	notifSvc := service.NewNotificationService(notifRepo)
 
 	return &handlers{
@@ -63,28 +63,23 @@ func setupEngine(cfg *config.Config, h *handlers) *gin.Engine {
 	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-
 	r := gin.New()
 	r.Use(middleware.Logger())
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
-
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "utm-backend"})
 	})
-
 	public := r.Group("/api/v1")
 	protected := r.Group("/api/v1")
 	protected.Use(middleware.Auth(cfg.JWT.Secret))
-
 	h.auth.RegisterRoutes(public, protected)
 	h.user.RegisterRoutes(protected)
 	h.aircraft.RegisterRoutes(protected)
 	h.airspace.RegisterRoutes(public, protected)
 	h.authorization.RegisterRoutes(protected)
-	h.telemetry.RegisterRoutes(r, protected)
+	h.telemetry.RegisterRoutes(protected)
 	h.notification.RegisterRoutes(protected)
-
 	return r
 }
 

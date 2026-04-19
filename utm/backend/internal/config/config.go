@@ -3,12 +3,13 @@ package config
 import "github.com/spf13/viper"
 
 type Config struct {
-	App      AppConfig
-	Postgres PostgresConfig
-	Mongo    MongoConfig
-	JWT      JWTConfig
-	MQ       MQConfig
-	MQTT     MQTTConfig
+	App          AppConfig
+	Postgres     PostgresConfig
+	Mongo        MongoConfig
+	JWT          JWTConfig
+	MQ           MQConfig
+	MQTT         MQTTConfig
+	AlertService AlertServiceConfig
 }
 
 type AppConfig struct {
@@ -48,6 +49,10 @@ type MQTTConfig struct {
 	Password string `mapstructure:"MQTT_PASSWORD"`
 }
 
+type AlertServiceConfig struct {
+	URL string `mapstructure:"ALERT_SERVICE_URL"` // ws://utm-alert:8081/ws/backend
+}
+
 func Load() (*Config, error) {
 	viper.SetConfigFile(".env")
 	viper.AutomaticEnv()
@@ -84,6 +89,9 @@ func Load() (*Config, error) {
 			ClientID: viper.GetString("MQTT_CLIENT_ID"),
 			Username: viper.GetString("MQTT_USERNAME"),
 			Password: viper.GetString("MQTT_PASSWORD"),
+		},
+		AlertService: AlertServiceConfig{
+			URL: viper.GetString("ALERT_SERVICE_URL"),
 		},
 	}, nil
 }

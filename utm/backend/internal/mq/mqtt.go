@@ -50,3 +50,10 @@ func (p *MQTTPublisher) Publish(topic string, payload any) error {
 func (p *MQTTPublisher) Close() {
 	p.client.Disconnect(500)
 }
+
+// MQTTClient là alias của MQTTPublisher, dùng khi cần cả pub và sub sau này.
+type MQTTClient = MQTTPublisher
+
+func NewMQTTClient(cfg config.MQTTConfig) (*MQTTClient, error) {
+	return NewMQTTPublisher(cfg)
+}
