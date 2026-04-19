@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: utm-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-utm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-utm_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-utm_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-utm_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - utm-network
+
+  mongo:
+    image: mongo:7
+    container_name: utm-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-utm_user}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-utm_pass}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-utm_db}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - utm-network
+
+  utm-alert:
+    build:
+      context: ./alert
+      dockerfile: Dockerfile
+    container_name: utm-alert
+    ports:
+      - "8081:8081"
+    environment:
+      ALERT_PORT: "8081"
+    networks:
+      - utm-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: utm-backend
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      ALERT_SERVICE_URL: ws://utm-alert:8081/ws/backend
+    depends_on:
+      - utm-alert
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - utm-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: utm-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+    depends_on:
+      - backend
+    networks:
+      - utm-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongo_data:
+
+networks:
+  utm-network:
+    driver: bridge
