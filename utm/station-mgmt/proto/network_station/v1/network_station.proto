@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package network_station.v1;
+
+option go_package = "github.com/utm/station-mgmt/pkg/pb/nspb";
+
+enum StationStatus {
+  STATION_STATUS_UNKNOWN = 0;
+  STATION_STATUS_ONLINE = 1;
+  STATION_STATUS_OFFLINE = 2;
+  STATION_STATUS_MAINTENANCE = 3;
+}
+
+message NetworkStation {
+  string id = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  string address = 5;
+  StationStatus status = 6;
+  string operator = 7;        // nhà mạng
+  string frequency_band = 8;  // băng tần (e.g. "n78", "n41")
+  double coverage_radius_km = 9;
+  int64 created_at = 10; // unix millis
+  int64 updated_at = 11;
+}
+
+// --- CRUD ---
+
+message CreateStationRequest {
+  string name = 1;
+  double latitude = 2;
+  double longitude = 3;
+  string address = 4;
+  string operator = 5;
+  string frequency_band = 6;
+  double coverage_radius_km = 7;
+}
+message CreateStationResponse { NetworkStation station = 1; }
+
+message GetStationRequest { string id = 1; }
+message GetStationResponse { NetworkStation station = 1; }
+
+message UpdateStationRequest {
+  string id = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  string address = 5;
+  StationStatus status = 6;
+  string operator = 7;
+  string frequency_band = 8;
+  double coverage_radius_km = 9;
+}
+message UpdateStationResponse { NetworkStation station = 1; }
+
+message DeleteStationRequest { string id = 1; }
+message DeleteStationResponse { bool success = 1; }
+
+message ListStationsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  StationStatus status_filter = 3;
+}
+message ListStationsResponse {
+  repeated NetworkStation stations = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// --- Summary (dùng bởi management service) ---
+
+message GetSummaryRequest {}
+
+message StationSummary {
+  int32 total = 1;
+  int32 online = 2;
+  int32 offline = 3;
+  int32 maintenance = 4;
+}
+
+service NetworkStationService {
+  rpc CreateStation(CreateStationRequest) returns (CreateStationResponse);
+  rpc GetStation(GetStationRequest) returns (GetStationResponse);
+  rpc UpdateStation(UpdateStationRequest) returns (UpdateStationResponse);
+  rpc DeleteStation(DeleteStationRequest) returns (DeleteStationResponse);
+  rpc ListStations(ListStationsRequest) returns (ListStationsResponse);
+  rpc GetSummary(GetSummaryRequest) returns (StationSummary);
+}

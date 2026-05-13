@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package rtk_station.v1;
+
+option go_package = "github.com/utm/station-mgmt/pkg/pb/rtkpb";
+
+enum StationStatus {
+  STATION_STATUS_UNKNOWN = 0;
+  STATION_STATUS_ONLINE = 1;
+  STATION_STATUS_OFFLINE = 2;
+  STATION_STATUS_MAINTENANCE = 3;
+}
+
+message RTKStation {
+  string id = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  string address = 5;
+  StationStatus status = 6;
+  double base_height_m = 7;  // chiều cao anten (mét)
+  string antenna_type = 8;   // loại anten (e.g. "choke ring", "patch")
+  int64 created_at = 9;      // unix millis
+  int64 updated_at = 10;
+}
+
+// --- CRUD ---
+
+message CreateStationRequest {
+  string name = 1;
+  double latitude = 2;
+  double longitude = 3;
+  string address = 4;
+  double base_height_m = 5;
+  string antenna_type = 6;
+}
+message CreateStationResponse { RTKStation station = 1; }
+
+message GetStationRequest { string id = 1; }
+message GetStationResponse { RTKStation station = 1; }
+
+message UpdateStationRequest {
+  string id = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  string address = 5;
+  StationStatus status = 6;
+  double base_height_m = 7;
+  string antenna_type = 8;
+}
+message UpdateStationResponse { RTKStation station = 1; }
+
+message DeleteStationRequest { string id = 1; }
+message DeleteStationResponse { bool success = 1; }
+
+message ListStationsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  StationStatus status_filter = 3;
+}
+message ListStationsResponse {
+  repeated RTKStation stations = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// --- Summary (dùng bởi management service) ---
+
+message GetSummaryRequest {}
+
+message StationSummary {
+  int32 total = 1;
+  int32 online = 2;
+  int32 offline = 3;
+  int32 maintenance = 4;
+}
+
+service RTKStationService {
+  rpc CreateStation(CreateStationRequest) returns (CreateStationResponse);
+  rpc GetStation(GetStationRequest) returns (GetStationResponse);
+  rpc UpdateStation(UpdateStationRequest) returns (UpdateStationResponse);
+  rpc DeleteStation(DeleteStationRequest) returns (DeleteStationResponse);
+  rpc ListStations(ListStationsRequest) returns (ListStationsResponse);
+  rpc GetSummary(GetSummaryRequest) returns (StationSummary);
+}

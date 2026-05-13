@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package station_mgmt.v1;
+
+option go_package = "github.com/utm/station-mgmt/pkg/pb/smpb";
+
+// GroupSummary dùng chung cho tất cả 5 loại trạm/thiết bị
+message GroupSummary {
+  int32 total = 1;
+  int32 online = 2;
+  int32 offline = 3;
+  int32 maintenance = 4;
+}
+
+message GetOverviewRequest {}
+
+message OverviewResponse {
+  GroupSummary five_g = 1;   // 5G (network station)
+  GroupSummary rtk = 2;
+  GroupSummary radar = 3;
+  GroupSummary tdoa = 4;
+  GroupSummary hub = 5;
+  int64 fetched_at = 6;      // unix millis, thời điểm lấy data
+}
+
+service StationManagementService {
+  rpc GetOverview(GetOverviewRequest) returns (OverviewResponse);
+}
