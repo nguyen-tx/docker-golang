@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go install:*)",
+      "Bash(go version:*)",
+      "Bash(curl -LO https://go.dev/dl/go1.22.5.linux-amd64.tar.gz)",
+      "Bash(sudo rm:*)",
+      "Bash(sudo tar:*)",
+      "Bash(go build *)"
+    ]
+  }
+}

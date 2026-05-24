@@ -8,6 +8,7 @@ import (
 	"github.com/utm/backend/internal/config"
 	"github.com/utm/backend/internal/database"
 	"github.com/utm/backend/internal/hapi"
+	scrpclient "github.com/utm/backend/internal/scrp"
 )
 
 func main() {
@@ -36,8 +37,15 @@ func main() {
 		log.Fatalf("connect mongo: %v", err)
 	}
 
+	// SCRP gRPC client
+	scrpClient, err := scrpclient.NewClient(cfg.SCRP.Address)
+	if err != nil {
+		log.Fatalf("connect scrp: %v", err)
+	}
+	defer scrpClient.Close()
+
 	// HTTP server
-	r := hapi.NewRouter(cfg, pgPool, mongoDB)
+	r := hapi.NewRouter(cfg, pgPool, mongoDB, scrpClient)
 
 	port := cfg.App.Port
 	if port == "" {

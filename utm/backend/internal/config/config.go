@@ -10,6 +10,7 @@ type Config struct {
 	MQ           MQConfig
 	MQTT         MQTTConfig
 	AlertService AlertServiceConfig
+	SCRP         SCRPConfig
 }
 
 type AppConfig struct {
@@ -53,6 +54,10 @@ type AlertServiceConfig struct {
 	URL string `mapstructure:"ALERT_SERVICE_URL"` // ws://utm-alert:8081/ws/backend
 }
 
+type SCRPConfig struct {
+	Address string `mapstructure:"SCRP_GRPC_ADDR"` // e.g. scrp-service:50051
+}
+
 func Load() (*Config, error) {
 	viper.SetConfigFile(".env")
 	viper.AutomaticEnv()
@@ -92,6 +97,9 @@ func Load() (*Config, error) {
 		},
 		AlertService: AlertServiceConfig{
 			URL: viper.GetString("ALERT_SERVICE_URL"),
+		},
+		SCRP: SCRPConfig{
+			Address: viper.GetString("SCRP_GRPC_ADDR"),
 		},
 	}, nil
 }

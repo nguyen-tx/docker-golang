@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package scrp;
+
+option go_package = "github.com/utm/backend/pkg/pb/scrp";
+
+message WaypointProto {
+  string id = 1;
+  double x = 2;
+  double y = 3;
+  double z = 4;
+}
+
+message SegmentProto {
+  WaypointProto p_start = 1;
+  WaypointProto p_end = 2;
+  double length = 3;
+  double v_min = 4;
+  double v_max = 5;
+}
+
+message LaneProto {
+  string id = 1;
+  repeated WaypointProto waypoints = 2;
+  repeated SegmentProto segments = 3;
+}
+
+message WaypointTimeEntryProto {
+  WaypointProto waypoint = 1;
+  double time = 2;
+}
+
+message ApprovedPlanProto {
+  string drone_id = 1;
+  string uav_type = 2;
+  LaneProto lane = 3;
+  repeated double v_waypoints = 4;
+  double t_land = 5;
+  string pad_id = 6;
+  int32 slot_index = 7;
+  string status = 8;
+  repeated WaypointTimeEntryProto waypoint_times = 10;
+  string algorithm = 11;
+  double expires_at = 12;
+}
+
+message PadProto {
+  string id = 1;
+  repeated string compatible_types = 2;
+}
+
+message SlotEntryProto {
+  string pad_id = 1;
+  int32 slot_index = 2;
+  string drone_id = 3;
+  string status = 4;
+}
+
+message VertiportStateProto {
+  string vertiport_id = 1;
+  repeated PadProto pads = 2;
+  double slot_duration = 3;
+  repeated SlotEntryProto slots = 4;
+}
+
+message MsdEntryProto {
+  string uav_type_i = 1;
+  string uav_type_j = 2;
+  double msd = 3;
+}
+
+message BodyLengthEntryProto {
+  string uav_type = 1;
+  double length_m = 2;
+}
+
+message SystemStateProto {
+  repeated ApprovedPlanProto approved_plans = 1;
+  VertiportStateProto vertiport_state = 2;
+  double t_now = 3;
+  repeated MsdEntryProto msd_matrix = 4;
+  repeated BodyLengthEntryProto body_length = 5;
+}
+
+message WaypointTimeResultProto {
+  string waypoint_id = 1;
+  double time = 2;
+}
+
+message ApproveResultProto {
+  string status = 1;
+  double t_dep_star = 2;
+  double t_land_assigned = 3;
+  string pad_id = 4;
+  int32 slot_index = 5;
+  repeated WaypointTimeResultProto waypoint_times = 6;
+  double expires_at = 7;
+  double delay_seconds = 8;
+  string delay_source = 9;
+  double energy_estimate = 10;
+  double soc_meaning = 11;
+}
+
+message RejectResultProto {
+  string status = 1;
+  string reason = 2;
+  double earliest_possible = 3;
+  bool has_earliest_possible = 4;
+  string detail = 5;
+}
+
+message OperatorFlightRequestProto {
+  string operator_id = 1;
+  string drone_id = 2;
+  LaneProto lane = 3;
+  repeated double v_waypoints = 4;
+  string destination_vertiport_id = 5;
+  double t_des = 6;
+  int32 priority = 7;
+  string uav_type = 8;
+  double soc_0 = 9;
+  double c_bat = 10;
+  double p_hover = 11;
+  double t_takeoff = 12;
+  double t_land_estimated = 13;
+}
+
+message ResolveConflictRequest {
+  OperatorFlightRequestProto flight_intention = 1;
+  repeated ApprovedPlanProto approved_plans = 2;
+  VertiportStateProto vertiport_state = 3;
+  SystemStateProto system_state = 4;
+}
+
+message ResolveConflictResponse {
+  oneof result {
+    ApproveResultProto approve = 1;
+    RejectResultProto reject = 2;
+  }
+}
+
+service SCRPService {
+  rpc ResolveConflict(ResolveConflictRequest) returns (ResolveConflictResponse);
+}

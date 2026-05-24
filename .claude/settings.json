@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go get *)",
+      "Bash(go mod *)",
+      "Bash(git -C /home/nguyentx/docker-golang config user.name)",
+      "Bash(git -C /home/nguyentx/docker-golang config user.email)",
+      "Bash(git -C /home/nguyentx/docker-golang remote -v)",
+      "Bash(git config *)",
+      "Bash(git -C /home/nguyentx/docker-golang status --short)",
+      "Bash(git -C /home/nguyentx/docker-golang log --oneline -3)",
+      "Bash(git -C /home/nguyentx/docker-golang add utm/README.md utm/alert/ utm/docker-compose.yml utm/backend/)",
+      "Bash(git -C /home/nguyentx/docker-golang diff --cached --stat)",
+      "Bash(git -C /home/nguyentx/docker-golang status utm/backend/)",
+      "Bash(git -C /home/nguyentx/docker-golang log --oneline --all -- utm/backend/internal/service/telemetry.go)",
+      "Bash(git -C /home/nguyentx/docker-golang diff HEAD -- utm/backend/internal/service/telemetry.go)",
+      "Bash(git -C /home/nguyentx/docker-golang show HEAD:utm/backend/internal/service/telemetry.go)",
+      "Bash(git -C /home/nguyentx/docker-golang commit -m ' *)",
+      "Bash(git -C /home/nguyentx/docker-golang push origin master)",
+      "Bash(mkdir -p /home/nguyentx/docker-golang/utm/station-mgmt/proto/network_station/v1)",
+      "Bash(mkdir -p /home/nguyentx/docker-golang/utm/station-mgmt/proto/rtk_station/v1)",
+      "Bash(mkdir -p /home/nguyentx/docker-golang/utm/station-mgmt/proto/manage_info/v1)",
+      "Bash(mkdir -p /home/nguyentx/docker-golang/utm/station-mgmt/proto/station_mgmt/v1)",
+      "Bash(mkdir -p /home/nguyentx/docker-golang/utm/station-mgmt/pkg/pb)",
+      "Bash(protoc --version)",
+      "Bash(chmod +x ~/.local/bin/protoc)",
+      "Bash(~/.local/bin/protoc --version)",
+      "Bash(export PATH=\"$HOME/.local/bin:$HOME/go/bin:$PATH\")",
+      "Bash(protoc --go_out=pkg/pb --go_opt=paths=source_relative --go-grpc_out=pkg/pb --go-grpc_opt=paths=source_relative -I proto proto/network_station/v1/network_station.proto)",
+      "Bash(protoc --go_out=pkg/pb --go_opt=paths=source_relative --go-grpc_out=pkg/pb --go-grpc_opt=paths=source_relative -I proto proto/rtk_station/v1/rtk_station.proto)",
+      "Bash(protoc --go_out=pkg/pb --go_opt=paths=source_relative --go-grpc_out=pkg/pb --go-grpc_opt=paths=source_relative -I proto proto/manage_info/v1/manage_info.proto)",
+      "Bash(protoc --go_out=pkg/pb --go_opt=paths=source_relative --go-grpc_out=pkg/pb --go-grpc_opt=paths=source_relative -I proto proto/station_mgmt/v1/station_mgmt.proto)",
+      "Bash(go vet *)"
+    ]
+  }
+}

@@ -9,16 +9,17 @@ import (
 	"github.com/utm/backend/internal/mq"
 	mongoRepo "github.com/utm/backend/internal/repository/mongo"
 	pgRepo "github.com/utm/backend/internal/repository/postgres"
+	scrpclient "github.com/utm/backend/internal/scrp"
 	"github.com/utm/backend/internal/service"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-func NewRouter(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Database) *gin.Engine {
-	h := buildHandlers(cfg, pgPool, mongoDB)
+func NewRouter(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Database, scrpClient *scrpclient.Client) *gin.Engine {
+	h := buildHandlers(cfg, pgPool, mongoDB, scrpClient)
 	return setupEngine(cfg, h)
 }
 
-func buildHandlers(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Database) *handlers {
+func buildHandlers(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Database, scrpClient *scrpclient.Client) *handlers {
 	userRepo := pgRepo.NewUserRepository(pgPool)
 	aircraftRepo := pgRepo.NewAircraftRepository(pgPool)
 	authzRepo := pgRepo.NewAuthorizationRepository(pgPool)
@@ -26,6 +27,10 @@ func buildHandlers(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Data
 	telemetryRepo := mongoRepo.NewTelemetryRepository(mongoDB)
 	cmdLogRepo := mongoRepo.NewCommandLogRepository(mongoDB)
 	notifRepo := mongoRepo.NewNotificationRepository(mongoDB)
+	fnRepo := pgRepo.NewFlightNotificationRepository(pgPool)
+	laneRepo := pgRepo.NewLaneRepository(pgPool)
+	waypointRepo := pgRepo.NewWaypointRepository(pgPool)
+	vertiportRepo := pgRepo.NewVertiportRepository(pgPool)
 
 	var mqttClient *mq.MQTTClient
 	if cfg.MQTT.Broker != "" {
@@ -43,19 +48,21 @@ func buildHandlers(cfg *config.Config, pgPool *pgxpool.Pool, mongoDB *mongo.Data
 	airspaceSvc := service.NewAirspaceService(airspaceRepo)
 	telemetrySvc := service.NewTelemetryService(
 		telemetryRepo, authzRepo, cmdLogRepo, mqttClient,
-		cfg.AlertService.URL, // ws://utm-alert:8081/ws/backend
+		cfg.AlertService.URL,
 	)
 	go telemetrySvc.AlertClient().Run()
 	notifSvc := service.NewNotificationService(notifRepo)
+	flightNotifSvc := service.NewFlightNotificationService(fnRepo, laneRepo, waypointRepo, vertiportRepo, scrpClient)
 
 	return &handlers{
-		auth:          NewAuthHandler(authSvc),
-		user:          NewUserHandler(userSvc),
-		aircraft:      NewAircraftHandler(aircraftSvc),
-		airspace:      NewAirspaceHandler(airspaceSvc),
-		authorization: NewAuthorizationHandler(authzSvc),
-		telemetry:     NewTelemetryHandler(telemetrySvc),
-		notification:  NewNotificationHandler(notifSvc),
+		auth:               NewAuthHandler(authSvc),
+		user:               NewUserHandler(userSvc),
+		aircraft:           NewAircraftHandler(aircraftSvc),
+		airspace:           NewAirspaceHandler(airspaceSvc),
+		authorization:      NewAuthorizationHandler(authzSvc),
+		telemetry:          NewTelemetryHandler(telemetrySvc),
+		notification:       NewNotificationHandler(notifSvc),
+		flightNotification: NewFlightNotificationHandler(flightNotifSvc),
 	}
 }
 
@@ -80,15 +87,17 @@ func setupEngine(cfg *config.Config, h *handlers) *gin.Engine {
 	h.authorization.RegisterRoutes(protected)
 	h.telemetry.RegisterRoutes(protected)
 	h.notification.RegisterRoutes(protected)
+	h.flightNotification.RegisterRoutes(protected)
 	return r
 }
 
 type handlers struct {
-	auth          *AuthHandler
-	user          *UserHandler
-	aircraft      *AircraftHandler
-	airspace      *AirspaceHandler
-	authorization *AuthorizationHandler
-	telemetry     *TelemetryHandler
-	notification  *NotificationHandler
+	auth               *AuthHandler
+	user               *UserHandler
+	aircraft           *AircraftHandler
+	airspace           *AirspaceHandler
+	authorization      *AuthorizationHandler
+	telemetry          *TelemetryHandler
+	notification       *NotificationHandler
+	flightNotification *FlightNotificationHandler
 }
